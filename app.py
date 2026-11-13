@@ -477,3 +477,14 @@ st.caption(
     "TIBOT AUTOMATIC • Données publiques Kraken. "
     "Les indicateurs sont éducatifs et ne prédisent pas les marchés."
 )
+if st.button("🔔 TESTER NOTIFICATION IPHONE"):
+    success = send_ntfy_notification(
+        "TIBOT AUTOMATIC",
+        "TEST DE NOTIFICATION",
+        "Bonne nouvelle ! TIBOT communique avec ton iPhone."
+    )
+
+    if success:
+        st.success("Notification envoyée à ntfy !")
+    else:
+        st.error("Échec de l'envoi. Vérifie la connexion.")
