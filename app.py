@@ -3,6 +3,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import urllib.request
+import urllib.error
 import json
 
 # --------------------------------
@@ -43,6 +44,38 @@ INTERVALS = {
     "4 heures": 240,
     "1 jour": 1440
 }
+
+# --------------------------------
+# NOTIFICATIONS NTFY
+# --------------------------------
+NTFY_TOPIC = "tibot-alertes-73x92"
+
+def send_ntfy_notification(market, title, explanation):
+    message = (
+        f"{market}\n"
+        f"{title}\n\n"
+        f"{explanation}\n\n"
+        "Observation éducative de TIBOT AUTOMATIC."
+    )
+
+    request = urllib.request.Request(
+        f"https://ntfy.sh/{NTFY_TOPIC}",
+        data=message.encode("utf-8"),
+        headers={
+            "Title": "TIBOT - Nouvelle alerte",
+            "Priority": "default",
+            "Tags": "chart_with_upwards_trend"
+        },
+        method="POST"
+    )
+
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            return response.status == 200
+    except Exception as error:
+        print(f"Erreur notification ntfy : {error}")
+        return False
+
 
 # --------------------------------
 # MEMOIRE DES ALERTES
@@ -109,7 +142,7 @@ def get_market_data(pair, interval):
         utc=True
     ).dt.tz_convert("America/Toronto")
 
-    # On retire la bougie encore en formation
+    # Retirer la bougie encore en formation
     if len(df) > 1:
         df = df.iloc[:-1].copy()
 
@@ -210,7 +243,7 @@ def detect_alerts(market_name, df):
             "La moyenne mobile 20 vient de passer sous la 50."
         ))
 
-    # Entree RSI en zone extreme
+    # Sortie des zones RSI extrêmes
     if previous["RSI"] > 70 and last["RSI"] <= 70:
         events.append((
             "RSI",
@@ -225,6 +258,7 @@ def detect_alerts(market_name, df):
             "Le RSI repasse au-dessus de 30."
         ))
 
+    # Enregistrer et envoyer les nouvelles alertes
     for category, title, explanation in events:
         alert_id = (
             market_name,
@@ -242,6 +276,12 @@ def detect_alerts(market_name, df):
                 "explanation": explanation,
                 "time": candle_time
             })
+
+            send_ntfy_notification(
+                market_name,
+                title,
+                explanation
+            )
 
     st.session_state.tibot_alerts = (
         st.session_state.tibot_alerts[:30]
@@ -362,7 +402,9 @@ def live_dashboard():
             df = calculate_indicators(raw)
 
             if len(df) < 60:
-                st.warning("Pas assez de données pour les indicateurs.")
+                st.warning(
+                    "Pas assez de données pour les indicateurs."
+                )
                 continue
 
             detect_alerts(market_name, df)
@@ -403,23 +445,28 @@ def live_dashboard():
         except Exception as error:
             st.error(f"Erreur de données : {error}")
 
+    # Centre d'alertes actualisé avec le tableau de bord
+    st.divider()
+    st.subheader("🔔 CENTRE D'ALERTES")
 
-st.divider()
-st.subheader("🔔 CENTRE D'ALERTES")
+    if st.session_state.tibot_alerts:
+        for alert in st.session_state.tibot_alerts:
+            with st.container(border=True):
+                st.markdown(
+                    f"**{alert['market']} — {alert['title']}**"
+                )
+                st.write(alert["explanation"])
+                st.caption(
+                    f"Bougie clôturée : {alert['time']}"
+                )
+    else:
+        st.info(
+            "Aucune nouvelle alerte pour le moment. "
+            "TIBOT continue de surveiller les marchés."
+        )
+
 
 live_dashboard()
-
-if st.session_state.tibot_alerts:
-    for alert in st.session_state.tibot_alerts:
-        with st.container(border=True):
-            st.markdown(f"**{alert['market']} — {alert['title']}**")
-            st.write(alert["explanation"])
-            st.caption(f"Bougie clôturée : {alert['time']}")
-else:
-    st.info(
-        "Aucune nouvelle alerte pour le moment. "
-        "TIBOT continue de surveiller les marchés."
-    )
 
 if st.button("EFFACER L'HISTORIQUE DES ALERTES"):
     st.session_state.tibot_alerts = []
